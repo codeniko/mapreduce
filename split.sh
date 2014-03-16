@@ -7,8 +7,6 @@ if [ $# != 2 ]; then
 	exit 1
 fi
 
-typeset -i total start perfile part end maxpart
-
 total=`/usr/bin/wc -l <"${1}"`
 maxpart=`/usr/bin/expr ${2} - 1`
 echo "total lines = ${total}"
