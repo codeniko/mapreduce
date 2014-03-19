@@ -16,6 +16,7 @@
 
 using namespace std;
 
+/*arguments when program invoked*/
 struct Args {
 	string application; /*[wordcount, sort]*/
 	string interface; /*[procs, threads]*/
@@ -51,14 +52,37 @@ struct WC_Node {
 	}
 };
 
-struct WC_Map_Thread_Args {
+/*Argument passed to new reduce threads on creation for wordcount*/
+struct WC_ReduceStruct {
+	bool die; /*flag for master to tell slave to die*/
+	bool done; /*flag for slave to tell master it's ready for work*/
+	//int tid; /*thread id for testing purpose, remove later*/
+	vector<WC_Node> *keyVector; /*key vector (work assignment)*/
+	static vector<WC_Node> reduceNodes; /*overall output for all reduce threads*/
+	static pthread_cond_t cv_master;
+	static pthread_cond_t cv_slave;
+	static pthread_mutex_t mtx_master;
+
+	WC_ReduceStruct() {
+		die = false;
+		done = false;
+	}
+};
+vector<WC_Node> WC_ReduceStruct::reduceNodes;
+pthread_cond_t WC_ReduceStruct::cv_master;
+pthread_cond_t WC_ReduceStruct::cv_slave;
+pthread_mutex_t WC_ReduceStruct::mtx_master;
+
+/*Arguments passed to new Map threads on creation for wordcount*/
+struct WC_MapStruct {
 	char file[PARTITION_SIZE];
 	vector<WC_Node> *threadwork;
 	list<string> *fileContent;
 };
 
-void wc_mapreduce(Args &);
+int wc_mapreduce(Args &);
+vector<WC_Node>* wc_getNextKeyVector(vector<WC_Node> &);
 void *wc_map(void *);
-void wc_reduce();
+void *wc_reduce(void *);
 
-pthread_mutex_t lock;
+static pthread_mutex_t lock;

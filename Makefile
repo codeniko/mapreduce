@@ -8,4 +8,4 @@ mapred.o: mapred.cpp mapred.hpp
 
 .PHONY: clean
 clean:
-	rm *.o mapred
+	rm -f *.o mapred

@@ -44,21 +44,22 @@ int main(int argc, char **argv)
 
 	pthread_mutex_init(&lock, 0);
 
+	int ret = 0;
 	if (args.application == "wordcount" && args.interface == "threads")
-		wc_mapreduce(args);
+		ret = wc_mapreduce(args);
 
 	pthread_mutex_destroy(&lock);
-	return 0;
+	return ret;
 }
 
-void wc_mapreduce(Args &args)
+int wc_mapreduce(Args &args)
 {
 	vector<pthread_t> threads; /*holds all thread IDs*/
 	vector<WC_Node> threadwork; /* holds all work of threads*/
 
 	/*create threads, assign threads a file, and send them off to work*/
 	for (int i = 0; i < args.numMap; i++) {
-		WC_Map_Thread_Args *threadArgs = new WC_Map_Thread_Args;
+		WC_MapStruct *threadArgs = new WC_MapStruct;
 		string partition = args.infile + "." + to_string(i);
 		memcpy(threadArgs->file, partition.c_str(), partition.size()+1);
 
@@ -74,6 +75,13 @@ void wc_mapreduce(Args &args)
 			threadArgs->fileContent->push_back(line);
 		file.close();
 		
+		/*if a partition file is empty, stop creation of threads*/
+		if (threadArgs->fileContent->empty()) {
+			delete threadArgs->fileContent;
+			delete threadArgs;
+			break;
+		}
+
 		threadArgs->threadwork = &threadwork;
 		pthread_t thread;
 		pthread_create(&thread, 0, wc_map, (void *)threadArgs);
@@ -84,17 +92,110 @@ void wc_mapreduce(Args &args)
 	for (vector<pthread_t>::iterator t_it = threads.begin(); t_it < threads.end(); t_it++)
 		pthread_join(*t_it, 0);
 
+	if (threadwork.empty()) {
+		cout <<"ERROR: " <<args.infile <<" is empty." <<endl;
+		return 1;
+	}
+
+	/*sort all of key,value pairs created by map threads*/
 	sort(threadwork.begin(), threadwork.end(), WC_Node::compareTo);
 
-	//output test
-	for (vector<WC_Node>::iterator wc_it = threadwork.begin(); wc_it < threadwork.end(); wc_it++)
-		cout << wc_it->key << ",  " << wc_it->count << endl;
+	/*prep for reduce*/
+	vector<WC_Node> *keyVector;
+	pthread_t thread;
+	pthread_cond_init(&WC_ReduceStruct::cv_master, 0);
+	pthread_cond_init(&WC_ReduceStruct::cv_slave, 0);
+	pthread_mutex_init(&WC_ReduceStruct::mtx_master, 0);
+	WC_ReduceStruct reduceStructs[args.numReduce];
+
+	/*create reduce threads and assign them key vectors*/
+	pthread_mutex_lock(&WC_ReduceStruct::mtx_master);
+	for (int i = 0; i < args.numReduce; i++) {
+		keyVector = wc_getNextKeyVector(threadwork);
+		if (keyVector == 0) {/*more workers than actual work...*/
+			reduceStructs[i].die = true;
+			continue;
+		}
+
+		reduceStructs[i].keyVector = keyVector;
+		//reduceStructs[i].tid = i;
+		//cerr << "init assigned next vector to "<<i<<" - "<<keyVector->front().key << "  "<< keyVector->size() << endl;
+		pthread_create(&thread, 0, wc_reduce, (void *)(reduceStructs + i));
+		pthread_detach(thread);
+	}
+
+	while (1) {
+		pthread_cond_wait(&WC_ReduceStruct::cv_master, &WC_ReduceStruct::mtx_master);
+
+		/*check if work is to be assigned to a slave*/
+		int numDead = 0;
+		for (int i = 0; i < args.numReduce; i++) {
+			if (!reduceStructs[i].die && reduceStructs[i].done) {
+				if ((keyVector = wc_getNextKeyVector(threadwork)) != 0) {
+					reduceStructs[i].keyVector = keyVector;
+					//cerr << "assigned next vector to "<<i<<" - "<<keyVector->front().key << "  "<< keyVector->size() << endl;
+					reduceStructs[i].done = false;
+				} else {
+					reduceStructs[i].die = true;
+					numDead++;
+				}
+				pthread_cond_signal(&WC_ReduceStruct::cv_slave); /*signal slave to work or die*/
+			} else if (reduceStructs[i].die)
+				numDead++;
+		}
+
+		if (numDead == args.numReduce) /*all slaves are dead, we are done*/
+			break; 
+	}
+	pthread_mutex_unlock(&WC_ReduceStruct::mtx_master);
+	pthread_cond_destroy(&WC_ReduceStruct::cv_master);
+	pthread_cond_destroy(&WC_ReduceStruct::cv_slave);
+	pthread_mutex_destroy(&WC_ReduceStruct::mtx_master);
+
+	/*sort all of key,value pairs created by reduce threads*/
+	sort(WC_ReduceStruct::reduceNodes.begin(), WC_ReduceStruct::reduceNodes.end(), WC_Node::compareTo);
+
+
+	/*write results to output file*/
+	//int count =0;
+	ofstream outfile;
+	outfile.open(args.outfile.c_str());
+	if (!outfile.is_open()) {
+		cerr << "ERROR: Unable to open output file, " << args.outfile <<"."<<endl;
+		return 1;
+	}
+	for (vector<WC_Node>::iterator wc_it = WC_ReduceStruct::reduceNodes.begin(); wc_it < WC_ReduceStruct::reduceNodes.end(); wc_it++)
+		outfile << wc_it->key << " " << wc_it->count << endl;
+	outfile.close();
+	//cout << count<<endl;
+
+	return 0;
 }
+
+/*Given a sorted vector full of key,value nodes from map workers, 
+ * retrieve a single key group by removing it from original vector
+ * and returning the subvector*/
+vector<WC_Node>* wc_getNextKeyVector(vector<WC_Node> &threadwork)
+{
+	if (threadwork.size() == 0)
+		return 0;
+
+	string curKey = threadwork[0].key;
+	vector<WC_Node>::iterator node_it;
+	for (node_it = threadwork.begin()+1; node_it < threadwork.end(); node_it++)
+		if (node_it->key != curKey)
+			break;
+	vector<WC_Node> *curKeyVector = new vector<WC_Node>(threadwork.begin(), node_it);
+	threadwork.erase(threadwork.begin(), node_it);
+	//cerr << "getting next vector - "<<curKeyVector->front().key << "  "<< curKeyVector->size() << endl;
+	return curKeyVector;
+}
+
 
 /*WordCount Map*/
 void *wc_map(void *arguments) 
 {
-	WC_Map_Thread_Args *args = (WC_Map_Thread_Args *)arguments;
+	WC_MapStruct *args = (WC_MapStruct *)arguments;
 
 	/*get each word of file and push it to threadwork vector*/
 	for (list<string>::iterator line_it = args->fileContent->begin(); line_it != args->fileContent->end(); line_it++) {
@@ -110,11 +211,32 @@ void *wc_map(void *arguments)
 			}
 		} while (ss);
 	}
-
+	
+	delete args->fileContent;
+	delete args;
 	return 0;
 }
 
 /*WordCount Reduce*/
-void wc_reduce()
+void *wc_reduce(void *arguments)
 {
+	WC_ReduceStruct *args = (WC_ReduceStruct *)arguments;
+	while (!args->die) {
+		/*count up total words*/
+		int wcount = 0;
+		for (vector<WC_Node>::iterator key_it = args->keyVector->begin(); key_it < args->keyVector->end(); key_it++)
+			wcount += key_it->count;
+		WC_Node node(args->keyVector->front().key, wcount);
+		delete args->keyVector;
+
+		/*push work to global reduce work vector, flag done, and signal master for more work*/
+		pthread_mutex_lock(&WC_ReduceStruct::mtx_master);
+		//cerr << "thread finished "<<args->tid<<" " << node.key << " " << node.count << endl<< endl;
+		args->done = true;
+		WC_ReduceStruct::reduceNodes.push_back(node);
+		pthread_cond_signal(&WC_ReduceStruct::cv_master);
+		pthread_cond_wait(&WC_ReduceStruct::cv_slave, &WC_ReduceStruct::mtx_master);
+		pthread_mutex_unlock(&WC_ReduceStruct::mtx_master);
+	}
+	return 0;
 }
