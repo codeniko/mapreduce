@@ -44,7 +44,7 @@ int main(int argc, char **argv)
 
 	pthread_mutex_init(&lock, 0);
 
-	if (args.application == "wordcount")
+	if (args.application == "wordcount" && args.interface == "threads")
 		wc_mapreduce(args);
 
 	pthread_mutex_destroy(&lock);
@@ -54,7 +54,7 @@ int main(int argc, char **argv)
 void wc_mapreduce(Args &args)
 {
 	vector<pthread_t> threads; /*holds all thread IDs*/
-	vector< vector<WC_Node> > threadwork; /* holds all work of threads*/
+	vector<WC_Node> threadwork; /* holds all work of threads*/
 
 	/*create threads, assign threads a file, and send them off to work*/
 	for (int i = 0; i < args.numMap; i++) {
@@ -73,11 +73,8 @@ void wc_mapreduce(Args &args)
 		while (getline(file, line))
 			threadArgs->fileContent->push_back(line);
 		file.close();
-
 		
-		vector<WC_Node> node_v;
-		threadwork.push_back(node_v);
-		threadArgs->outNodes = &threadwork.back();
+		threadArgs->threadwork = &threadwork;
 		pthread_t thread;
 		pthread_create(&thread, 0, wc_map, (void *)threadArgs);
 		threads.push_back(thread);
@@ -87,44 +84,19 @@ void wc_mapreduce(Args &args)
 	for (vector<pthread_t>::iterator t_it = threads.begin(); t_it < threads.end(); t_it++)
 		pthread_join(*t_it, 0);
 
-	/*merge all work done by threads into one thread*/
-	cout << "shit" << endl;
-	vector<WC_Node> allwords = threadwork.front();
-	for (vector< vector<WC_Node> >::iterator twork_it = threadwork.begin()+1; twork_it < threadwork.end(); twork_it++)
-		allwords.insert(allwords.end(), twork_it->begin(), twork_it->end());
+	sort(threadwork.begin(), threadwork.end(), WC_Node::compareTo);
 
-	cout << "fuck" << endl;
-	sort(allwords.begin(), allwords.end(), WC_Node::compareTo);
-
-	for (vector<WC_Node>::iterator wc_it = allwords.begin(); wc_it < allwords.end(); wc_it++)
+	//output test
+	for (vector<WC_Node>::iterator wc_it = threadwork.begin(); wc_it < threadwork.end(); wc_it++)
 		cout << wc_it->key << ",  " << wc_it->count << endl;
 }
 
+/*WordCount Map*/
 void *wc_map(void *arguments) 
 {
 	WC_Map_Thread_Args *args = (WC_Map_Thread_Args *)arguments;
-	/*ifstream infile;
-	infile.open(args->file);
-	if (!infile.is_open()) {
-		cerr << "ERROR: unable to open file '" << args->file << "'";
-		pthread_exit(0);
-	}
 
-	string line;
-	while (getline(infile, line)) {
-		transform(line.begin(), line.end(), line.begin(), ::tolower);
-		istringstream ss(line);
-			do {
-				string word;
-				ss >> word;
-				if (word != "")
-					args->outNodes->push_back(WC_Node(word, 1));
-			} while (ss);
-	}
-*/
-	//infile.close();
-
-	cout << "Parsing contents for " << args->file << endl;
+	/*get each word of file and push it to threadwork vector*/
 	for (list<string>::iterator line_it = args->fileContent->begin(); line_it != args->fileContent->end(); line_it++) {
 		istringstream ss(*line_it);
 		do {
@@ -133,19 +105,16 @@ void *wc_map(void *arguments)
 			transform(word.begin(), word.end(), word.begin(), ::tolower);
 			if (word != "") {
 				pthread_mutex_lock(&lock);
-				args->outNodes->push_back(WC_Node(word, 1));
+				args->threadwork->push_back(WC_Node(word, 1));
 				pthread_mutex_unlock(&lock);
 			}
 		} while (ss);
 	}
-	for (int i = 0; i < args->outNodes->size(); i++)
-		cout << (*args->outNodes)[i].key << "   " << (*args->outNodes)[i].count << endl;
-	cout << "DONE - Parsing contents for " << args->file << endl;
-
 
 	return 0;
 }
 
+/*WordCount Reduce*/
 void wc_reduce()
 {
 }

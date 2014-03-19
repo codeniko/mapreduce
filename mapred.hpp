@@ -53,7 +53,7 @@ struct WC_Node {
 
 struct WC_Map_Thread_Args {
 	char file[PARTITION_SIZE];
-	vector<WC_Node> *outNodes;
+	vector<WC_Node> *threadwork;
 	list<string> *fileContent;
 };
 
