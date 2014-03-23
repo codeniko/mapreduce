@@ -70,8 +70,9 @@ int wc_mapreduce(Args &args)
 	/*create threads, assign threads a file, and send them off to work*/
 	for (int i = 0; i < args.numMap; i++) {
 		WC_MapStruct *threadArgs = new WC_MapStruct;
-		std::string s= boost::lexical_cast<std::string>(i);
-		string partition = args.infile + "." + s;
+		char i_str[6];
+		sprintf(i_str, "%d", i);
+		string partition = args.infile + "." + i_str;
 		memcpy(threadArgs->file, partition.c_str(), partition.size()+1);
 
 		threadArgs->fileContent = new list<string>;
