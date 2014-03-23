@@ -1,4 +1,4 @@
-CFLAGS=-g -std=c++11 -Wall -pthread
+CFLAGS=-g -std=c++0x -Wall -pthread
 
 mapred: mapred.o
 	g++ $(CFLAGS) -o mapred mapred.o

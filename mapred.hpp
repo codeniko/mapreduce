@@ -80,6 +80,11 @@ struct WC_MapStruct {
 	list<string> *fileContent;
 };
 
+int sort_mapreduce(Args &);
+/*vector<SORT_Node>* sort_getNextKeyVector(vector<SORT_Node> &);
+void *sort_map(void *);
+void *sort_reduce(void *);
+*/
 int wc_mapreduce(Args &);
 vector<WC_Node>* wc_getNextKeyVector(vector<WC_Node> &);
 void *wc_map(void *);

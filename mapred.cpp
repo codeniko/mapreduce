@@ -1,4 +1,5 @@
 #include "mapred.hpp"
+#include <boost/lexical_cast.hpp>
 
 using namespace std;
 
@@ -47,9 +48,18 @@ int main(int argc, char **argv)
 	int ret = 0;
 	if (args.application == "wordcount" && args.interface == "threads")
 		ret = wc_mapreduce(args);
+		
+	/*if user chose integer sort*/
+	if (args.application == "sort" && args.interface == "threads"){
+		ret = sort_mapreduce(args);
+	}
 
 	pthread_mutex_destroy(&lock);
 	return ret;
+}
+
+int sort_mapreduce(Args &args){
+	return 0;
 }
 
 int wc_mapreduce(Args &args)
@@ -60,7 +70,8 @@ int wc_mapreduce(Args &args)
 	/*create threads, assign threads a file, and send them off to work*/
 	for (int i = 0; i < args.numMap; i++) {
 		WC_MapStruct *threadArgs = new WC_MapStruct;
-		string partition = args.infile + "." + to_string(i);
+		std::string s= boost::lexical_cast<std::string>(i);
+		string partition = args.infile + "." + s;
 		memcpy(threadArgs->file, partition.c_str(), partition.size()+1);
 
 		threadArgs->fileContent = new list<string>;
