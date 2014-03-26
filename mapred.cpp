@@ -50,11 +50,19 @@ int main(int argc, char **argv)
 		ret = wc_mapreduce(args);
 		
 	/*if user chose integer sort*/
-	if (args.application == "sort" && args.interface == "threads"){
+	else if (args.application == "sort" && args.interface == "threads"){
 		ret = sort_mapreduce(args);
+	} else {
+		cerr << "Sorry, this mapreduce program only does the 'wordcount' and 'sort' applications using 'threads'. Please invoke the program using the correct arguments." << endl;
+	system(string("rm -f "+args.infile+".[0-9]*").c_str());
+		return 1;
 	}
 
 	pthread_mutex_destroy(&lock);
+
+	/*remove the files that we initially split*/
+	system(string("rm -f "+args.infile+".[0-9]*").c_str());
+
 	return ret;
 }
 
@@ -211,17 +219,28 @@ void *wc_map(void *arguments)
 
 	/*get each word of file and push it to threadwork vector*/
 	for (list<string>::iterator line_it = args->fileContent->begin(); line_it != args->fileContent->end(); line_it++) {
-		istringstream ss(*line_it);
-		do {
-			string word;
-			ss >> word;
-			transform(word.begin(), word.end(), word.begin(), ::tolower);
-			if (word != "") {
+		transform(line_it->begin(), line_it->end(), line_it->begin(), ::tolower);
+		vector<string> wordVector; /*vector containing word tokens in line*/
+
+		/*tokenize the line into words*/
+		size_t prev = 0, pos;
+		while ((pos = line_it->find_first_not_of("abcdefghijklmnopqrstuvwxyz", prev)) != string::npos)
+		{
+			if (pos > prev)
+				wordVector.push_back(line_it->substr(prev, pos-prev));
+			prev = pos+1;
+		}
+		if (prev < line_it->length())
+			wordVector.push_back(line_it->substr(prev, string::npos));
+
+		/*Go through word tokens, check if not empty, and push to vector for this threads work*/
+		for (vector<string>::iterator word_it = wordVector.begin(); word_it < wordVector.end(); word_it++) {
+			if (*word_it != "") {
 				pthread_mutex_lock(&lock);
-				args->threadwork->push_back(WC_Node(word, 1));
+				args->threadwork->push_back(WC_Node(*word_it, 1));
 				pthread_mutex_unlock(&lock);
 			}
-		} while (ss);
+		}
 	}
 	
 	delete args->fileContent;
