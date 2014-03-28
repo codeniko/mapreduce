@@ -53,7 +53,11 @@ int main(int argc, char **argv)
 		ret = sort_mapreduce(args);
 	} else {
 		cerr << "Sorry, this mapreduce program only does the 'wordcount' and 'sort' applications using 'threads'. Please invoke the program using the correct arguments." << endl;
+<<<<<<< HEAD
 		system(string("rm -f "+args.infile+".[0-9]*").c_str());
+=======
+	system(string("rm -f "+args.infile+".[0-9]*").c_str());
+>>>>>>> FETCH_HEAD
 		return 1;
 	}
 
@@ -396,9 +400,15 @@ void *wc_map(void *arguments)
 		/*Go through word tokens, check if not empty, and push to vector for this threads work*/
 		for (vector<string>::iterator word_it = wordVector.begin(); word_it < wordVector.end(); word_it++) {
 			if (*word_it != "") {
+<<<<<<< HEAD
 				sem_wait(&sem_mutex);
 				args->threadwork->push_back(WC_Node(*word_it, 1));
 				sem_post(&sem_mutex);
+=======
+				pthread_mutex_lock(&lock);
+				args->threadwork->push_back(WC_Node(*word_it, 1));
+				pthread_mutex_unlock(&lock);
+>>>>>>> FETCH_HEAD
 			}
 		}
 	}
