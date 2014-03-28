@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <vector>
 #include <pthread.h>
+#include <semaphore.h>
 #include <stdio.h>
 #include <string.h>
 #include <sstream>
@@ -80,14 +81,41 @@ struct WC_MapStruct {
 	list<string> *fileContent;
 };
 
-int sort_mapreduce(Args &);
-/*vector<SORT_Node>* sort_getNextKeyVector(vector<SORT_Node> &);
-void *sort_map(void *);
-void *sort_reduce(void *);
-*/
 int wc_mapreduce(Args &);
 vector<WC_Node>* wc_getNextKeyVector(vector<WC_Node> &);
 void *wc_map(void *);
 void *wc_reduce(void *);
 
+/*Sort count node*/
+struct SORT_Node;
+struct SORT_Node {
+	int key;
+
+	SORT_Node() {}
+	SORT_Node(int key) {
+		this->key = key;
+	}
+
+	static bool compareTo(SORT_Node a, SORT_Node b) {
+		return a.key < b.key;
+	}
+};
+
+/*Argument passed to new reduce threads on creation for wordcount*/
+struct SORT_ReduceStruct {
+	vector<SORT_Node> *final_sorted;
+	vector<struct SORT_MapStruct> *all_maps;
+};
+
+/*Arguments passed to new Map threads on creation for wordcount*/
+struct SORT_MapStruct {
+	char file[PARTITION_SIZE];
+	vector<int> *fileContent;
+};
+
+int sort_mapreduce(Args &);
+void *sort_map(void *);
+void *sort_reduce(void *);
+
 static pthread_mutex_t lock;
+static sem_t sem_mutex;

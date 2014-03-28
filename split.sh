@@ -9,7 +9,7 @@ fi
 
 total=`/usr/bin/wc -l <"${1}"`
 maxpart=`/usr/bin/expr ${2} - 1`
-/bin/echo "total lines = ${total}"
+# /bin/echo "total lines = ${total}"
 perfile=`/usr/bin/expr ${total} / ${2}`
 start=1
 part=0
@@ -19,7 +19,7 @@ while [ $start -le $total ]; do
 	end=`/usr/bin/expr ${end} - 1`
 	if [ ${end} -gt ${total} ]; then end=${total}; fi
 	if [ ${part} -eq ${maxpart} ]; then end=${total}; fi
-	/bin/echo "sed -n \"${start},${end}p\" '<'${1} '>'${1}.${part}"
+#	/bin/echo "sed -n \"${start},${end}p\" '<'${1} '>'${1}.${part}"
 	/bin/sed -n "${start},${end}p" <${1} >${1}.${part}
 	part=`/usr/bin/expr ${part} + 1`
 	start=`/usr/bin/expr ${end} + 1`
