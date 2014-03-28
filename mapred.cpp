@@ -32,6 +32,11 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
+	if (args.numMap < 0 || args.numReduce < 0) {
+		cout << "No point in running this program if 0 map threads or 0 reduce threads" << endl;
+		return 1;
+	}
+
 	/*split input file into map number of files*/
 	pid_t pid = fork();
 	if (pid == 0) {
@@ -53,11 +58,7 @@ int main(int argc, char **argv)
 		ret = sort_mapreduce(args);
 	} else {
 		cerr << "Sorry, this mapreduce program only does the 'wordcount' and 'sort' applications using 'threads'. Please invoke the program using the correct arguments." << endl;
-<<<<<<< HEAD
 		system(string("rm -f "+args.infile+".[0-9]*").c_str());
-=======
-	system(string("rm -f "+args.infile+".[0-9]*").c_str());
->>>>>>> FETCH_HEAD
 		return 1;
 	}
 
@@ -70,18 +71,6 @@ int main(int argc, char **argv)
 }
 
 int sort_mapreduce(Args &args){
-	/*
-	 * 1) reduce thread needs vector of work done by map threads, have a vector<struct sort_MapStruct>, create a main sorted vector (starts empty, FOR REDUCE to output into)
-	 * 2) knowing the amount of map workers you need, read input file one by one, create an instance of struct sort_mapStruct, stick it into vector in step 1, 
-	 * 		stick contents of file into sort_mapStruct->fileContents, create thread and pass in sort_mapStruct pointer
-	 * 3) map worker sorts the filecontents (vector), main thread still has access to it because of vector in step 1
-	 * 4) once all map workers are done, call reduce and give that vector from step 1
-	 * 5) reduce vector - 
-	 * 6) reduce vector - look at first index of each sort_MapStruct passed, remove lowest of them all, and stick it into vector of step 5
-	 * 7) repeat step 6 until all sort_mapStructs passed in are empty
-	 * 8) done
-	 * 
-	 * */
 	 /*threads for number of maps given by user*/
 	vector<pthread_t> threads;
 	/*the final sorted list that will be passed to reduce and ultimately is the one that will be the output*/
@@ -119,16 +108,8 @@ int sort_mapreduce(Args &args){
 		if (threadArgs->fileContent->empty()) {
 			delete threadArgs->fileContent;
 			delete threadArgs;
-			break;
+			continue;
 		}
-	/*	for( std::vector<int>::const_iterator i = threadArgs->fileContent->begin(); i != threadArgs->fileContent->end(); ++i){
-			std::cout << *i << '\n';
-			SORT_Node a;
-			a.key = *i;
-			final_sorted.push_back(a);
-		}
-		std::cout << "end" << '\n';
-		*/
 		pthread_t thread;
 		pthread_create(&thread, 0, sort_map, (void *)threadArgs);
 		threads.push_back(thread);
@@ -182,9 +163,7 @@ void *sort_reduce(void *arguments){
 		/*go through all_maps elements and if any don't equal zero then the boolean will go to false and the loop will not exit*/
 		bool zero = true;
 		 for (std::vector<struct SORT_MapStruct>::iterator it = args->all_maps->begin() ; it != args->all_maps->end(); ++it){
-			struct SORT_MapStruct temp = *it;
-			vector<int> *tempints = it->fileContent;
-			int l = tempints->size();
+			int l = it->fileContent->size();
 			if(l != 0){
 				/*std::cout << "entered zero break" << '\n';*/
 				zero = false;
@@ -203,9 +182,7 @@ void *sort_reduce(void *arguments){
 		int lowest_val = args->all_maps->begin()->fileContent->front();
 		
 		for (std::vector<struct SORT_MapStruct>::iterator it = args->all_maps->begin() ; it != args->all_maps->end(); ++it){
-			struct SORT_MapStruct temp = *it;
-			vector<int> *tempints = it->fileContent;
-			int l = tempints->front();
+			int l = it->fileContent->front();
 			if(l < lowest_val){
 				lowest_val = l;
 				lowest = it;
@@ -255,11 +232,11 @@ int wc_mapreduce(Args &args)
 			threadArgs->fileContent->push_back(line);
 		file.close();
 		
-		/*if a partition file is empty, stop creation of threads*/
+		/*if a partition file is empty, skip the creation of this thread*/
 		if (threadArgs->fileContent->empty()) {
 			delete threadArgs->fileContent;
 			delete threadArgs;
-			break;
+			continue;
 		}
 
 		threadArgs->threadwork = &threadwork;
@@ -301,8 +278,6 @@ int wc_mapreduce(Args &args)
 		}
 
 		reduceStructs[i].keyVector = keyVector;
-		//reduceStructs[i].tid = i;
-		//cerr << "init assigned next vector to "<<i<<" - "<<keyVector->front().key << "  "<< keyVector->size() << endl;
 		pthread_create(&thread, 0, wc_reduce, (void *)(reduceStructs + i));
 		pthread_detach(thread);
 	}
@@ -316,7 +291,6 @@ int wc_mapreduce(Args &args)
 			if (!reduceStructs[i].die && reduceStructs[i].done) {
 				if ((keyVector = wc_getNextKeyVector(threadwork)) != 0) {
 					reduceStructs[i].keyVector = keyVector;
-					//cerr << "assigned next vector to "<<i<<" - "<<keyVector->front().key << "  "<< keyVector->size() << endl;
 					reduceStructs[i].done = false;
 				} else {
 					reduceStructs[i].die = true;
@@ -340,7 +314,6 @@ int wc_mapreduce(Args &args)
 
 
 	/*write results to output file*/
-	//int count =0;
 	ofstream outfile;
 	outfile.open(args.outfile.c_str());
 	if (!outfile.is_open()) {
@@ -350,7 +323,6 @@ int wc_mapreduce(Args &args)
 	for (vector<WC_Node>::iterator wc_it = WC_ReduceStruct::reduceNodes.begin(); wc_it < WC_ReduceStruct::reduceNodes.end(); wc_it++)
 		outfile << wc_it->key << " " << wc_it->count << endl;
 	outfile.close();
-	//cout << count<<endl;
 
 	return 0;
 }
@@ -371,7 +343,6 @@ vector<WC_Node>* wc_getNextKeyVector(vector<WC_Node> &threadwork)
 			break;
 	vector<WC_Node> *curKeyVector = new vector<WC_Node>(threadwork.begin(), node_it);
 	threadwork.erase(threadwork.begin(), node_it);
-	//cerr << "getting next vector - "<<curKeyVector->front().key << "  "<< curKeyVector->size() << endl;
 	return curKeyVector;
 }
 
@@ -400,15 +371,9 @@ void *wc_map(void *arguments)
 		/*Go through word tokens, check if not empty, and push to vector for this threads work*/
 		for (vector<string>::iterator word_it = wordVector.begin(); word_it < wordVector.end(); word_it++) {
 			if (*word_it != "") {
-<<<<<<< HEAD
 				sem_wait(&sem_mutex);
 				args->threadwork->push_back(WC_Node(*word_it, 1));
 				sem_post(&sem_mutex);
-=======
-				pthread_mutex_lock(&lock);
-				args->threadwork->push_back(WC_Node(*word_it, 1));
-				pthread_mutex_unlock(&lock);
->>>>>>> FETCH_HEAD
 			}
 		}
 	}
@@ -432,7 +397,6 @@ void *wc_reduce(void *arguments)
 
 		/*push work to global reduce work vector, flag done, and signal master for more work*/
 		pthread_mutex_lock(&WC_ReduceStruct::mtx_master);
-		//cerr << "thread finished "<<args->tid<<" " << node.key << " " << node.count << endl<< endl;
 		args->done = true;
 		WC_ReduceStruct::reduceNodes.push_back(node);
 		pthread_cond_signal(&WC_ReduceStruct::cv_master);
